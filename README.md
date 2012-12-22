@@ -4,8 +4,4 @@
 
 So far only the vorbis encoding works.
 
-### ToDo:
-- Check which funcs/types/vars needs to be visible outside the package
-- Commenting the funcs / types (godoc)
-- Goroutines?
-- Commenting Readme
+See also https://github.com/runningwild/gorbis for a pure Go implementation.

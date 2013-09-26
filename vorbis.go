@@ -3,12 +3,13 @@
 // license that can be found in the LICENSE file.
 
 // Package vorbis contains the Vorbis reference encoder and decoder.
-// This is the low-level interface. If you only want to extract audio from 
+// This is the low-level interface. If you only want to extract audio from
 // an Ogg Vorbis file, you probably want to use the vorbisfile package.
 package vorbis
 
 /*
 #include <stdlib.h>
+#include <string.h>
 #include <vorbis/codec.h>
 
 // This helper is also used to solve the problem with double array return
@@ -34,6 +35,10 @@ char *getstring(char **arr_str, int i) {
 	return arr_str[i];
 }
 
+ogg_packet *ogg_packet_create() {
+	return malloc(sizeof(ogg_packet));
+}
+
 #cgo LDFLAGS: -lvorbis
 */
 import "C"
@@ -41,7 +46,6 @@ import "C"
 import (
 	"reflect"
 	"unsafe"
-
 	"github.com/grd/ogg"
 )
 
@@ -165,6 +169,7 @@ func AnalysisInit(v *DspState, vi *Info) int {
 
 func (p *Comment) HeaderOut(op *ogg.Packet) int {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	ret := C.vorbis_commentheader_out((*C.vorbis_comment)(p), cp)
 	toPacket(op, cp)
 	return int(ret)
@@ -172,8 +177,11 @@ func (p *Comment) HeaderOut(op *ogg.Packet) int {
 
 func AnalysisHeaderOut(v *DspState, vc *Comment, op, op_comm, op_code *ogg.Packet) int {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	cp_comm := fromPacket(op_comm)
+	defer freePacket(cp_comm)
 	cp_code := fromPacket(op_code)
+	defer freePacket(cp_code)
 
 	ret := int(C.vorbis_analysis_headerout((*C.vorbis_dsp_state)(v),
 		(*C.vorbis_comment)(vc), cp, cp_comm, cp_code))
@@ -210,6 +218,7 @@ func AnalysisBlockOut(v *DspState, vb *Block) int {
 
 func Analysis(vb *Block, op *ogg.Packet) int {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	ret := int(C.vorbis_analysis((*C.vorbis_block)(vb), cp))
 	toPacket(op, cp)
 	return ret
@@ -221,15 +230,17 @@ func BitrateAddBlock(vb *Block) int {
 
 func BitrateFlushPacket(vd *DspState, op *ogg.Packet) int {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	ret := int(C.vorbis_bitrate_flushpacket((*C.vorbis_dsp_state)(vd), cp))
 	toPacket(op, cp)
 	return ret
 }
 
-// Vorbis PRIMITIVES: synthesis layer 
+// Vorbis PRIMITIVES: synthesis layer
 
 func SynthesisIdHeader(op *ogg.Packet) int {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	ret := int(C.vorbis_synthesis_idheader(cp))
 	toPacket(op, cp)
 	return ret
@@ -237,6 +248,7 @@ func SynthesisIdHeader(op *ogg.Packet) int {
 
 func SynthesisHeaderIn(vi *Info, vc *Comment, op *ogg.Packet) int {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	ret := int(C.vorbis_synthesis_headerin((*C.vorbis_info)(vi),
 		(*C.vorbis_comment)(vc), cp))
 	toPacket(op, cp)
@@ -253,6 +265,7 @@ func SynthesisRestart(v *DspState) int {
 
 func Synthesis(vb *Block, op *ogg.Packet) int {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	ret := int(C.vorbis_synthesis((*C.vorbis_block)(vb), cp))
 	toPacket(op, cp)
 	return ret
@@ -260,6 +273,7 @@ func Synthesis(vb *Block, op *ogg.Packet) int {
 
 func SynthesisTrackOnly(vb *Block, op *ogg.Packet) int {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	ret := int(C.vorbis_synthesis_trackonly((*C.vorbis_block)(vb), cp))
 	toPacket(op, cp)
 	return ret
@@ -290,6 +304,7 @@ func SynthesisRead(v *DspState, samples int) int {
 
 func PacketBlocksize(vi *Info, op *ogg.Packet) int32 {
 	cp := fromPacket(op)
+	defer freePacket(cp)
 	ret := int32(C.vorbis_packet_blocksize((*C.vorbis_info)(vi), cp))
 	toPacket(op, cp)
 	return ret
@@ -334,9 +349,11 @@ func fromPacket(op *ogg.Packet) *C.ogg_packet {
 		return nil
 	}
 
-	cp := C.ogg_packet{}
+	cp := C.ogg_packet_create()
+
 	if op.Packet != nil {
-		cp.packet = (*C.uchar)(unsafe.Pointer(&op.Packet[0]))
+		cp.packet = (*C.uchar)(C.malloc(C.size_t(len(op.Packet))))
+		C.memcpy(unsafe.Pointer(cp.packet), unsafe.Pointer(&op.Packet[0]), C.size_t(len(op.Packet)))
 		cp.bytes = C.long(len(op.Packet))
 	}
 	if op.BOS {
@@ -347,7 +364,7 @@ func fromPacket(op *ogg.Packet) *C.ogg_packet {
 	}
 	cp.granulepos = C.ogg_int64_t(op.GranulePos)
 	cp.packetno = C.ogg_int64_t(op.PacketNo)
-	return &cp
+	return cp
 }
 
 func toPacket(op *ogg.Packet, cp *C.ogg_packet) {
@@ -358,12 +375,18 @@ func toPacket(op *ogg.Packet, cp *C.ogg_packet) {
 	if cp.packet == nil || cp.bytes == 0 {
 		op.Packet = nil
 	} else {
-		h := &reflect.SliceHeader{uintptr(unsafe.Pointer(cp.packet)), int(cp.bytes), int(cp.bytes)}
-		op.Packet = *(*[]byte)(unsafe.Pointer(h))
+		op.Packet = C.GoBytes(unsafe.Pointer(cp.packet), C.int(cp.bytes))
 	}
 
 	op.BOS = cp.b_o_s == 1
 	op.EOS = cp.e_o_s == 1
 	op.GranulePos = int64(cp.granulepos)
 	op.PacketNo = int64(cp.packetno)
+}
+
+func freePacket(cp *C.ogg_packet) {
+	if cp.packet != nil {
+		C.free(unsafe.Pointer(cp.packet))
+	}
+	C.free(unsafe.Pointer(cp))
 }

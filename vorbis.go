@@ -44,9 +44,9 @@ ogg_packet *ogg_packet_create() {
 import "C"
 
 import (
+	"github.com/grd/ogg"
 	"reflect"
 	"unsafe"
-	"github.com/grd/ogg"
 )
 
 // Info struct contains basic information about the audio in a vorbis bitstream.

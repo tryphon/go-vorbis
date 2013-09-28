@@ -13,9 +13,9 @@ import (
 	"math/rand"
 	"os"
 
-	"github.com/grd/ogg"
-	"github.com/grd/vorbis"
-	"github.com/grd/vorbis/vorbisenc"
+	ogg "github.com/tryphon/go-ogg"
+	vorbis "github.com/tryphon/go-vorbis"
+	"github.com/tryphon/go-vorbis/vorbisenc"
 )
 
 const READ = 1024

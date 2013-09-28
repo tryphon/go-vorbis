@@ -44,7 +44,7 @@ ogg_packet *ogg_packet_create() {
 import "C"
 
 import (
-	"github.com/grd/ogg"
+	ogg "github.com/tryphon/go-ogg"
 	"reflect"
 	"unsafe"
 )

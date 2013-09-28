@@ -13,7 +13,7 @@ import "C"
 import (
 	"unsafe"
 
-	"github.com/grd/vorbis"
+	vorbis "github.com/tryphon/go-vorbis"
 )
 
 func Init(vi *vorbis.Info, channels int32, rate int32,

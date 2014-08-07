@@ -65,8 +65,12 @@ func (p *Info) Rate() (rate int32) {
 // DspState struct is the state for one instance of a Vorbis encoder or decoder.
 type DspState C.vorbis_dsp_state
 
-func (p *DspState) Sequence() int64 {
-	return int64(p.sequence)
+func (dspState *DspState) Sequence() int64 {
+	return int64(dspState.sequence)
+}
+
+func (dspState *DspState) Info() *Info {
+	return (*Info)(dspState.vi)
 }
 
 // Block struct holds the data for a single block of audio.
@@ -199,8 +203,9 @@ func AnalysisSetBufferItem(v *DspState, channel int, offset int, value float32) 
 
 func AnalysisBuffer(v *DspState, vals int) [][]float32 {
 	floatpp := C.vorbis_analysis_buffer((*C.vorbis_dsp_state)(v), C.int(vals))
-	ret := make([][]float32, 2)
-	for i := 0; i < 2; i++ {
+	channelCount := int(v.Info().Channels())
+	ret := make([][]float32, channelCount)
+	for i := 0; i < channelCount; i++ {
 		indx := C.vorbis_get_buffer_indx(floatpp, C.int(i))
 		h := &reflect.SliceHeader{uintptr(unsafe.Pointer(indx)), vals, vals}
 		ret[i] = *(*[]float32)(unsafe.Pointer(h))
@@ -217,10 +222,18 @@ func AnalysisBlockOut(v *DspState, vb *Block) int {
 }
 
 func Analysis(vb *Block, op *ogg.Packet) int {
-	cp := fromPacket(op)
-	defer freePacket(cp)
-	ret := int(C.vorbis_analysis((*C.vorbis_block)(vb), cp))
-	toPacket(op, cp)
+	var cpacket *C.ogg_packet
+
+	if op != nil {
+		cpacket = fromPacket(op)
+		defer freePacket(cpacket)
+	}
+
+	ret := int(C.vorbis_analysis((*C.vorbis_block)(vb), cpacket))
+
+	if op != nil {
+		toPacket(op, cpacket)
+	}
 	return ret
 }
 
@@ -352,9 +365,9 @@ func fromPacket(op *ogg.Packet) *C.ogg_packet {
 	cp := C.ogg_packet_create()
 
 	if op.Packet != nil {
-		cp.packet = (*C.uchar)(C.malloc(C.size_t(len(op.Packet))))
-		C.memcpy(unsafe.Pointer(cp.packet), unsafe.Pointer(&op.Packet[0]), C.size_t(len(op.Packet)))
 		cp.bytes = C.long(len(op.Packet))
+		cp.packet = (*C.uchar)(C.malloc(C.size_t(cp.bytes)))
+		C.memcpy(unsafe.Pointer(cp.packet), unsafe.Pointer(&op.Packet[0]), C.size_t(len(op.Packet)))
 	}
 	if op.BOS {
 		cp.b_o_s = 1
@@ -386,7 +399,8 @@ func toPacket(op *ogg.Packet, cp *C.ogg_packet) {
 
 func freePacket(cp *C.ogg_packet) {
 	if cp.packet != nil {
-		C.free(unsafe.Pointer(cp.packet))
+		// FIXME
+		// C.free(unsafe.Pointer(cp.packet))
 	}
 	C.free(unsafe.Pointer(cp))
 }

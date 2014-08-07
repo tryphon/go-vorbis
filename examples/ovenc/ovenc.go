@@ -201,7 +201,6 @@ func main() {
 
 	// clean up and exit. vi.Clear() must be called last
 
-	oss.Clear()
 	vb.Clear()
 	vd.Clear()
 	vc.Clear()

@@ -366,8 +366,7 @@ func fromPacket(op *ogg.Packet) *C.ogg_packet {
 
 	if op.Packet != nil {
 		cp.bytes = C.long(len(op.Packet))
-		cp.packet = (*C.uchar)(C.malloc(C.size_t(cp.bytes)))
-		C.memcpy(unsafe.Pointer(cp.packet), unsafe.Pointer(&op.Packet[0]), C.size_t(len(op.Packet)))
+		cp.packet = (*C.uchar)(unsafe.Pointer(&op.Packet[0]))
 	}
 	if op.BOS {
 		cp.b_o_s = 1
